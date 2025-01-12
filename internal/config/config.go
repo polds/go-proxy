@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/yusing/go-proxy/internal/api"
+	"github.com/yusing/go-proxy/internal/api/v1/auth"
 	"github.com/yusing/go-proxy/internal/autocert"
 	"github.com/yusing/go-proxy/internal/common"
 	"github.com/yusing/go-proxy/internal/config/types"
@@ -150,6 +151,7 @@ func (cfg *Config) Start() {
 	cfg.StartAutoCert()
 	cfg.StartProxyProviders()
 	cfg.StartServers()
+	cfg.InitializeAuthProviders()
 }
 
 func (cfg *Config) StartAutoCert() {
@@ -198,6 +200,12 @@ func (cfg *Config) StartServers() {
 			HTTPAddr:     common.MetricsHTTPAddr,
 			Handler:      metrics.NewHandler(),
 		})
+	}
+}
+
+func (cfg *Config) InitializeAuthProviders() {
+	if err := auth.Initialize(); err != nil {
+		E.LogError("Failed to initialize authentication providers", err, &logger)
 	}
 }
 
