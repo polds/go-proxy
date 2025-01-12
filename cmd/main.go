@@ -3,26 +3,24 @@ package main
 import (
 	"encoding/json"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/yusing/go-proxy/internal"
-	"github.com/yusing/go-proxy/internal/api"
 	"github.com/yusing/go-proxy/internal/api/v1/query"
 	"github.com/yusing/go-proxy/internal/common"
 	"github.com/yusing/go-proxy/internal/config"
-	"github.com/yusing/go-proxy/internal/entrypoint"
 	E "github.com/yusing/go-proxy/internal/error"
 	"github.com/yusing/go-proxy/internal/logging"
-	"github.com/yusing/go-proxy/internal/metrics"
 	"github.com/yusing/go-proxy/internal/net/http/middleware"
-	"github.com/yusing/go-proxy/internal/net/http/server"
+	"github.com/yusing/go-proxy/internal/route/routes"
 	"github.com/yusing/go-proxy/internal/task"
 	"github.com/yusing/go-proxy/pkg"
 )
+
+var rawLogger = log.New(os.Stdout, "", 0)
 
 func main() {
 	args := common.GetArgs()
@@ -35,12 +33,12 @@ func main() {
 		if err := query.ReloadServer(); err != nil {
 			E.LogFatal("server reload error", err)
 		}
-		logging.Info().Msg("ok")
+		rawLogger.Println("ok")
 		return
 	case common.CommandListIcons:
 		icons, err := internal.ListAvailableIcons()
 		if err != nil {
-			log.Fatal(err)
+			rawLogger.Fatal(err)
 		}
 		printJSON(icons)
 		return
@@ -97,16 +95,16 @@ func main() {
 	switch args.Command {
 	case common.CommandListRoutes:
 		cfg.StartProxyProviders()
-		printJSON(config.RoutesByAlias())
+		printJSON(routes.RoutesByAlias())
 		return
 	case common.CommandListConfigs:
-		printJSON(config.Value())
+		printJSON(cfg.Value())
 		return
 	case common.CommandDebugListEntries:
-		printJSON(config.DumpEntries())
+		printJSON(cfg.DumpEntries())
 		return
 	case common.CommandDebugListProviders:
-		printJSON(config.DumpProviders())
+		printJSON(cfg.DumpProviders())
 		return
 	}
 
@@ -114,7 +112,7 @@ func main() {
 		logging.Warn().Msg("API JWT secret is empty, authentication is disabled")
 	}
 
-	cfg.StartProxyProviders()
+	cfg.Start()
 	config.WatchChanges()
 
 	sig := make(chan os.Signal, 1)
@@ -122,44 +120,12 @@ func main() {
 	signal.Notify(sig, syscall.SIGTERM)
 	signal.Notify(sig, syscall.SIGHUP)
 
-	autocert := config.GetAutoCertProvider()
-	if autocert != nil {
-		if err := autocert.Setup(); err != nil {
-			E.LogFatal("autocert setup error", err)
-		}
-	} else {
-		logging.Info().Msg("autocert not configured")
-	}
-
-	server.StartServer(server.Options{
-		Name:         "proxy",
-		CertProvider: autocert,
-		HTTPAddr:     common.ProxyHTTPAddr,
-		HTTPSAddr:    common.ProxyHTTPSAddr,
-		Handler:      http.HandlerFunc(entrypoint.Handler),
-	})
-	server.StartServer(server.Options{
-		Name:         "api",
-		CertProvider: autocert,
-		HTTPAddr:     common.APIHTTPAddr,
-		Handler:      api.NewHandler(),
-	})
-
-	if common.PrometheusEnabled {
-		server.StartServer(server.Options{
-			Name:         "metrics",
-			CertProvider: autocert,
-			HTTPAddr:     common.MetricsHTTPAddr,
-			Handler:      metrics.NewHandler(),
-		})
-	}
-
 	// wait for signal
 	<-sig
 
 	// grafully shutdown
 	logging.Info().Msg("shutting down")
-	_ = task.GracefulShutdown(time.Second * time.Duration(config.Value().TimeoutShutdown))
+	_ = task.GracefulShutdown(time.Second * time.Duration(cfg.Value().TimeoutShutdown))
 }
 
 func prepareDirectory(dir string) {
@@ -175,6 +141,5 @@ func printJSON(obj any) {
 	if err != nil {
 		logging.Fatal().Err(err).Send()
 	}
-	rawLogger := log.New(os.Stdout, "", 0)
 	rawLogger.Print(string(j)) // raw output for convenience using "jq"
 }

@@ -8,7 +8,7 @@ type (
 	Item struct {
 		Show         bool           `json:"show"`
 		Name         string         `json:"name"` // display name
-		Icon         string         `json:"icon"`
+		Icon         *IconURL       `json:"icon"`
 		URL          string         `json:"url"` // alias + domain
 		Category     string         `json:"category"`
 		Description  string         `json:"description" aliases:"desc"`
@@ -22,7 +22,7 @@ type (
 
 func (item *Item) IsEmpty() bool {
 	return item == nil || (item.Name == "" &&
-		item.Icon == "" &&
+		item.Icon == nil &&
 		item.URL == "" &&
 		item.Category == "" &&
 		item.Description == "" &&

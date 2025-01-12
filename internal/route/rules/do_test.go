@@ -1,31 +1,10 @@
-package types
+package rules
 
 import (
 	"testing"
 
 	. "github.com/yusing/go-proxy/internal/utils/testing"
 )
-
-func TestParseSubjectArgs(t *testing.T) {
-	t.Run("without quotes", func(t *testing.T) {
-		subject, args, err := parse("rewrite / /foo/bar")
-		ExpectNoError(t, err)
-		ExpectEqual(t, subject, "rewrite")
-		ExpectDeepEqual(t, args, []string{"/", "/foo/bar"})
-	})
-	t.Run("with quotes", func(t *testing.T) {
-		subject, args, err := parse(`error 403 "Forbidden 'foo' 'bar'."`)
-		ExpectNoError(t, err)
-		ExpectEqual(t, subject, "error")
-		ExpectDeepEqual(t, args, []string{"403", "Forbidden 'foo' 'bar'."})
-	})
-	t.Run("with escaped", func(t *testing.T) {
-		subject, args, err := parse(`error 403 Forbidden\ \"foo\"\ \"bar\".`)
-		ExpectNoError(t, err)
-		ExpectEqual(t, subject, "error")
-		ExpectDeepEqual(t, args, []string{"403", "Forbidden \"foo\" \"bar\"."})
-	})
-}
 
 func TestParseCommands(t *testing.T) {
 	tests := []struct {
@@ -58,6 +37,11 @@ func TestParseCommands(t *testing.T) {
 		{
 			name:    "rewrite_too_many_args",
 			input:   "rewrite / / /",
+			wantErr: ErrInvalidArguments,
+		},
+		{
+			name:    "rewrite_no_leading_slash",
+			input:   "rewrite abc /",
 			wantErr: ErrInvalidArguments,
 		},
 		// serve tests
@@ -104,14 +88,19 @@ func TestParseCommands(t *testing.T) {
 			wantErr: ErrInvalidArguments,
 		},
 		{
-			name:    "error_unescaped_space",
+			name:    "error_no_escaped_space",
 			input:   "error 404 Not Found",
+			wantErr: ErrInvalidArguments,
+		},
+		{
+			name:    "error_invalid_status_code",
+			input:   "error 123 abc",
 			wantErr: ErrInvalidArguments,
 		},
 		// proxy directive tests
 		{
 			name:    "proxy_valid",
-			input:   "proxy localhost:8080",
+			input:   "proxy http://localhost:8080",
 			wantErr: nil,
 		},
 		{
@@ -121,7 +110,12 @@ func TestParseCommands(t *testing.T) {
 		},
 		{
 			name:    "proxy_too_many_args",
-			input:   "proxy localhost:8080 extra",
+			input:   "proxy http://localhost:8080 extra",
+			wantErr: ErrInvalidArguments,
+		},
+		{
+			name:    "proxy_invalid_url",
+			input:   "proxy invalid_url",
 			wantErr: ErrInvalidArguments,
 		},
 		// unknown directive test
